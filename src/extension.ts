@@ -69,6 +69,7 @@ function makeRequest(context: vscode.ExtensionContext) {
 		const user = config['user'] ?? 'default';
 		const password = config['password'] ?? '';
 		const server = config['server'];
+		const database = config['database'] ?? 'default';
 		const data = request;
 
 		if (server === undefined || server.length === 0) {
@@ -83,7 +84,7 @@ function makeRequest(context: vscode.ExtensionContext) {
 		const options = {
 			hostname: server,
 			port: 443,
-			path: '/?log_queries=1&output_format_json_quote_64bit_integers=1&database=default&result_overflow_mode=throw&readonly=1',
+			path: `/?log_queries=1&output_format_json_quote_64bit_integers=1&result_overflow_mode=throw&readonly=1&database=${database}`,
 			method: 'POST',
 			headers: {
 				// eslint-disable-next-line @typescript-eslint/naming-convention
