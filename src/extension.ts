@@ -39,19 +39,21 @@ function makeRequest(context: vscode.ExtensionContext) {
 				if (items.length === 2) {
 					config[items[0]] = items[1];
 				}
+				request += '\n';
 				continue;
 			}
 
-			let commentStart = line.indexOf("#");
 			let cleanedLine = line;
 
+			let commentStart = line.indexOf("#");
 			if (commentStart !== -1) {
 				cleanedLine = line.slice(0, commentStart);
 			}
 
 			if (cleanedLine.length > 0) {
-				request += cleanedLine + '\n';
+				request += cleanedLine;
 			}
+			request += '\n';
 		}
 
 		request += 'FORMAT JSONCompact';
