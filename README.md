@@ -5,13 +5,15 @@ Simple client for ClickHouse DB (http://clickhouse.tech/)
 ## Features
 
 Let run a request to ClickHouse DB.
-Server name must be written in file '### server=<clickhouse_server>'
-If user and password ommited, then used defaults ('default':'')
+Server name must be written in file `### server=<clickhouse_server>`
+
+If user and password ommited, then used defaults (`username=='default', password=='''`)
 
 ```
 ### server=ch814307.clickhouse.yy.com
 ### user=default
 ### password=
+### database=
 
 # simple request
 # return number of crashes
@@ -31,6 +33,12 @@ Connects only on 443 port.
 
 Basic version.
 Support comments starting from #.
+
+### 0.0.2
+
+* Support database selection through `### database=default`.
+* Fix show error lines.
+* Changle loader style.
 
 ### 0.0.1
 
