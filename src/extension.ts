@@ -66,13 +66,13 @@ function makeRequest(context: vscode.ExtensionContext) {
 			RequestResultPanel.currentPanel.showSpinner();
 		}
 
-		const user = config['user'] ?? 'default';
+		const user = config['user'] ?? '';
 		const password = config['password'] ?? '';
-		const server = config['server'];
-		const database = config['database'] ?? 'default';
+		const server = config['server'] ?? '';
+		const database = config['database'] ?? '';
 		const data = request;
 
-		if (server === undefined || server.length === 0) {
+		if (server.length === 0) {
 			if (RequestResultPanel.currentPanel) {
 				RequestResultPanel.currentPanel.displayError({ 'message': 'Set server with "### <server_name>" line' });
 			}

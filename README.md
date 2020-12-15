@@ -7,7 +7,7 @@ Simple client for ClickHouse DB (http://clickhouse.tech/)
 Let run a request to ClickHouse DB.
 Server name must be written in file `### server=<clickhouse_server>`
 
-If user and password ommited, then used defaults (`username=='default', password=='''`)
+If user and password ommited, then used defaults (`username=='', password=='''`)
 
 ```
 ### server=ch814307.clickhouse.yy.com
@@ -33,6 +33,10 @@ Connects only on 443 port.
 
 Basic version.
 Support comments starting from #.
+
+### 0.0.3
+
+* By default `user` is unset
 
 ### 0.0.2
 
