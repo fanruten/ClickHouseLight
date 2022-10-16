@@ -1,9 +1,12 @@
 import * as vscode from 'vscode';
 import * as https from 'https';
+import * as http from "http";
+
+import { posix } from 'path';
 
 export function activate(context: vscode.ExtensionContext) {
-	let disposable = vscode.commands.registerCommand('clickhouseLight.makeRequest', () => {
-		makeRequest(context);
+	let disposable = vscode.commands.registerCommand('clickhouseLight.makeRequest', async () => {
+		await makeRequest(context);
 	});
 
 	context.subscriptions.push(disposable);
@@ -21,7 +24,7 @@ export function activate(context: vscode.ExtensionContext) {
 // this method is called when your extension is deactivated
 export function deactivate() { }
 
-function makeRequest(context: vscode.ExtensionContext) {
+async function makeRequest(context: vscode.ExtensionContext) {
 	const editor = vscode.window.activeTextEditor;
 
 	if (editor) {
@@ -66,11 +69,65 @@ function makeRequest(context: vscode.ExtensionContext) {
 			RequestResultPanel.currentPanel.showSpinner();
 		}
 
-		const user = config['user'] ?? '';
-		const password = config['password'] ?? '';
-		const server = config['server'] ?? '';
-		const database = config['database'] ?? '';
 		const data = request;
+		const server = config['server'] ?? '';
+
+		var database = config['database'] ?? '';
+		var user = config['user'] ?? '';
+		var port = config['port'] ?? '';
+		var password = config['password'] ?? ''
+
+		if (vscode.workspace.workspaceFolders != undefined) {
+			try {
+				const folderUri = vscode.workspace.workspaceFolders[0].uri;
+				const fileUri = folderUri.with({ path: posix.join(folderUri.path, '.clickhouse_settings') });
+				const settingsData = await vscode.workspace.fs.readFile(fileUri);
+				const settingsStr = Buffer.from(settingsData).toString('utf8');
+
+				interface Credential {
+					server: string;
+					database: string;
+					port: number;
+					user: string;
+					password: string
+				}
+
+				interface GlobalSettings {
+					credentials: [Credential];
+				}
+
+				const globalConfig: GlobalSettings = JSON.parse(settingsStr);
+
+				console.log("globalConfig", globalConfig)
+
+				for (const credential of globalConfig.credentials) {
+					if (credential.server == server) {
+						if (database == '') {
+							database = credential.database ?? '';
+						}
+						if (user == '') {
+							user = credential.user ?? '';
+						}
+						if (port == '') {
+							port = credential.port.toString() ?? '';
+						}
+						if (password == '') {
+							password = credential.password ?? '';
+						}
+						break;
+					}
+				}
+			} catch (error) {
+				console.log("read global settings error", error)
+			}
+		}
+
+		if (port == '') {
+			port = '443'
+		}
+		const useHttps = port == "443" ? true : false
+
+		console.log("set settings", useHttps, database, user, port, password);
 
 		if (server.length === 0) {
 			if (RequestResultPanel.currentPanel) {
@@ -83,7 +140,7 @@ function makeRequest(context: vscode.ExtensionContext) {
 
 		const options = {
 			hostname: server,
-			port: 443,
+			port: port,
 			path: `/?log_queries=1&output_format_json_quote_64bit_integers=1&result_overflow_mode=throw&readonly=1&database=${database}`,
 			method: 'POST',
 			headers: {
@@ -98,7 +155,7 @@ function makeRequest(context: vscode.ExtensionContext) {
 			}
 		};
 
-		const req = https.request(options, res => {
+		const req = (useHttps ? https : http).request(options, res => {
 			res.setEncoding('utf8');
 
 			let statusCode = res.statusCode;
