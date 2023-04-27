@@ -27,176 +27,183 @@ export function deactivate() { }
 async function makeRequest(context: vscode.ExtensionContext) {
 	const editor = vscode.window.activeTextEditor;
 
-	if (editor) {
-		let document = editor.document;
-		const documentText = document.getText();
+	if (!editor) {
+		return;
+	}
 
-		const words = documentText.split('\n');
-		let config: { [key: string]: string } = {};
-		let request = '';
+	let document = editor.document;
+	const documentText = document.getText();
 
-		for (const line of words) {
-			if (line.startsWith('### ')) {
-				let confLine = line.slice(4);
-				let items = confLine.split('=');
-				if (items.length === 2) {
-					config[items[0]] = items[1];
-				}
-				request += '\n';
-				continue;
-			}
+	const words = documentText.split('\n');
+	let config: { [key: string]: string } = {};
+	let request = '';
 
-			let cleanedLine = line;
-
-			let commentStart = line.indexOf("#");
-			if (commentStart !== -1) {
-				cleanedLine = line.slice(0, commentStart);
-			}
-
-			if (cleanedLine.length > 0) {
-				request += cleanedLine;
+	for (const line of words) {
+		if (line.startsWith('### ')) {
+			let confLine = line.slice(4);
+			let items = confLine.split('=');
+			if (items.length === 2) {
+				config[items[0]] = items[1];
 			}
 			request += '\n';
+			continue;
 		}
 
-		request += 'FORMAT JSONCompact';
+		let cleanedLine = line;
 
-		console.log(`${request}`);
+		let commentStart = line.indexOf("#");
+		if (commentStart !== -1) {
+			cleanedLine = line.slice(0, commentStart);
+		}
 
-		RequestResultPanel.createOrShow(context.extensionUri, document.uri);
+		if (cleanedLine.length > 0) {
+			request += cleanedLine;
+		}
+		request += '\n';
+	}
+
+	request += 'FORMAT JSONCompact';
+
+	console.log(`${request}`);
+
+	RequestResultPanel.createOrShow(context.extensionUri, document.uri);
+
+	if (RequestResultPanel.currentPanel) {
+		RequestResultPanel.currentPanel.showSpinner();
+	}
+
+	const data = request;
+	const alias = config['alias'] ?? '';
+	
+	var server = config['server'] ?? '';
+	var database = config['database'] ?? '';
+	var user = config['user'] ?? '';
+	var port = config['port'] ?? '';
+	var password = config['password'] ?? '';
+
+	if (vscode.workspace.workspaceFolders !== undefined) {
+		try {
+			const folderUri = vscode.workspace.workspaceFolders[0].uri;
+			const fileUri = folderUri.with({ path: posix.join(folderUri.path, '.clickhouse_settings') });
+			const settingsData = await vscode.workspace.fs.readFile(fileUri);
+			const settingsStr = Buffer.from(settingsData).toString('utf8');
+
+			interface Credential {
+				alias: string;
+				server: string;
+				database: string;
+				port: number;
+				user: string;
+				password: string
+			}
+
+			interface GlobalSettings {
+				credentials: [Credential];
+			}
+
+			const globalConfig: GlobalSettings = JSON.parse(settingsStr);
+
+			console.log("globalConfig", globalConfig);
+
+			for (const credential of globalConfig.credentials) {
+				if ((credential.alias && credential.alias === alias) || (credential.server && credential.server === server)) {
+					if (server === '') {
+						server = credential.server ?? '';
+					}
+					if (database === '') {
+						database = credential.database ?? '';
+					}
+					if (user === '') {
+						user = credential.user ?? '';
+					}
+					if (port === '') {
+						port = credential.port.toString() ?? '';
+					}
+					if (password === '') {
+						password = credential.password ?? '';
+					}
+					break;
+				}
+			}
+		} catch (error) {
+			console.log("read global settings error", error);
+		}
+	}
+
+	if (port === '') {
+		port = '443';
+	}
+	const useHttps = port === "443" ? true : false;
+
+	console.log("set settings", useHttps, database, user, port, password);
+
+	if (server.length === 0) {
+		if (RequestResultPanel.currentPanel) {
+			RequestResultPanel.currentPanel.displayError({ 'message': 'Set server with "### <server_name>" line' });
+		}
+		return;
+	}
+
+	console.log(`server: ${server}\nrequest:\n${data}`);
+
+	const options = {
+		hostname: server,
+		port: port,
+		path: `/?log_queries=1&output_format_json_quote_64bit_integers=1&result_overflow_mode=throw&readonly=1&database=${database}`,
+		method: 'POST',
+		headers: {
+			// eslint-disable-next-line @typescript-eslint/naming-convention
+			'Content-Type': 'application/json',
+			// eslint-disable-next-line @typescript-eslint/naming-convention
+			'Content-Length': data.length,
+			// eslint-disable-next-line @typescript-eslint/naming-convention
+			'X-ClickHouse-User': user,
+			// eslint-disable-next-line @typescript-eslint/naming-convention
+			'X-ClickHouse-Key': password
+		}
+	};
+
+	const req = (useHttps ? https : http).request(options, res => {
+		res.setEncoding('utf8');
+
+		let statusCode = res.statusCode;
+		console.log(`statusCode: ${statusCode}`);
+
+		var data = '';
+		res.on('data', chunk => {
+			data += chunk;
+		});
+
+		res.on('end', function () {
+			console.log(`response: ${data}`);
+
+			if (statusCode !== 200) {
+				if (RequestResultPanel.currentPanel) {
+					RequestResultPanel.currentPanel.displayError({ 'code': statusCode, 'message': res.statusMessage, 'body': data });
+				}
+				return;
+			}
+
+			let json = JSON.parse(data);
+
+			if (RequestResultPanel.currentPanel) {
+				RequestResultPanel.currentPanel.displayResults(json);
+			}
+		});
+	});
+
+	req.on('error', error => {
+		console.error('Request Error');
+		console.error(error);
 
 		if (RequestResultPanel.currentPanel) {
-			RequestResultPanel.currentPanel.showSpinner();
+			RequestResultPanel.currentPanel.displayError({ 'message': error.message });
 		}
+	});
 
-		const data = request;
-		const server = config['server'] ?? '';
-
-		var database = config['database'] ?? '';
-		var user = config['user'] ?? '';
-		var port = config['port'] ?? '';
-		var password = config['password'] ?? ''
-
-		if (vscode.workspace.workspaceFolders != undefined) {
-			try {
-				const folderUri = vscode.workspace.workspaceFolders[0].uri;
-				const fileUri = folderUri.with({ path: posix.join(folderUri.path, '.clickhouse_settings') });
-				const settingsData = await vscode.workspace.fs.readFile(fileUri);
-				const settingsStr = Buffer.from(settingsData).toString('utf8');
-
-				interface Credential {
-					server: string;
-					database: string;
-					port: number;
-					user: string;
-					password: string
-				}
-
-				interface GlobalSettings {
-					credentials: [Credential];
-				}
-
-				const globalConfig: GlobalSettings = JSON.parse(settingsStr);
-
-				console.log("globalConfig", globalConfig)
-
-				for (const credential of globalConfig.credentials) {
-					if (credential.server == server) {
-						if (database == '') {
-							database = credential.database ?? '';
-						}
-						if (user == '') {
-							user = credential.user ?? '';
-						}
-						if (port == '') {
-							port = credential.port.toString() ?? '';
-						}
-						if (password == '') {
-							password = credential.password ?? '';
-						}
-						break;
-					}
-				}
-			} catch (error) {
-				console.log("read global settings error", error)
-			}
-		}
-
-		if (port == '') {
-			port = '443'
-		}
-		const useHttps = port == "443" ? true : false
-
-		console.log("set settings", useHttps, database, user, port, password);
-
-		if (server.length === 0) {
-			if (RequestResultPanel.currentPanel) {
-				RequestResultPanel.currentPanel.displayError({ 'message': 'Set server with "### <server_name>" line' });
-			}
-			return;
-		}
-
-		console.log(`server: ${server}\nrequest:\n${data}`);
-
-		const options = {
-			hostname: server,
-			port: port,
-			path: `/?log_queries=1&output_format_json_quote_64bit_integers=1&result_overflow_mode=throw&readonly=1&database=${database}`,
-			method: 'POST',
-			headers: {
-				// eslint-disable-next-line @typescript-eslint/naming-convention
-				'Content-Type': 'application/json',
-				// eslint-disable-next-line @typescript-eslint/naming-convention
-				'Content-Length': data.length,
-				// eslint-disable-next-line @typescript-eslint/naming-convention
-				'X-ClickHouse-User': user,
-				// eslint-disable-next-line @typescript-eslint/naming-convention
-				'X-ClickHouse-Key': password
-			}
-		};
-
-		const req = (useHttps ? https : http).request(options, res => {
-			res.setEncoding('utf8');
-
-			let statusCode = res.statusCode;
-			console.log(`statusCode: ${statusCode}`);
-
-			var data = '';
-			res.on('data', chunk => {
-				data += chunk;
-			});
-
-			res.on('end', function () {
-				console.log(`response: ${data}`);
-
-				if (statusCode !== 200) {
-					if (RequestResultPanel.currentPanel) {
-						RequestResultPanel.currentPanel.displayError({ 'code': statusCode, 'message': res.statusMessage, 'body': data });
-					}
-					return;
-				}
-
-				let json = JSON.parse(data);
-
-				if (RequestResultPanel.currentPanel) {
-					RequestResultPanel.currentPanel.displayResults(json);
-				}
-			});
-		});
-
-		req.on('error', error => {
-			console.error('Request Error');
-			console.error(error);
-
-			if (RequestResultPanel.currentPanel) {
-				RequestResultPanel.currentPanel.displayError({ 'message': error.message });
-			}
-		});
-
-		console.log('start request');
-		req.write(data);
-		req.end();
-	}
+	console.log('start request');
+	req.write(data);
+	req.end();
 };
 
 class RequestResultPanel {

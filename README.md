@@ -32,6 +32,7 @@ You can save credentials in the `.clickhouse_settings` file, which should be pla
 {
     "credentials": [
         {
+            "alias": "prod",
             "server": "clickhouse.production.svc.cluster.local",
             "port": 8123,
             "user": "admin",
@@ -40,6 +41,25 @@ You can save credentials in the `.clickhouse_settings` file, which should be pla
     ]
 }
 ```
+
+And after use them from your requests
+
+```
+### alias=prod
+
+# simple request
+# return number of crashes
+SELECT
+    count(*),
+    uniq(user_id)
+FROM dev_null
+WHERE (dt == today() ) AND (key == 'crash') AND (value == 1)
+LIMIT 100
+```
+
+### 0.0.6
+
+* Support aliases to the .clickhouse_settings file
 
 ### 0.0.4
 
